@@ -1,7 +1,5 @@
 # rpc-proxy
 
-[![CircleCI](https://circleci.com/gh/gochain/rpc-proxy/tree/master.svg?style=svg)](https://circleci.com/gh/gochain/rpc-proxy/tree/master)
-
 A proxy for `web3` JSONRPC featuring:
 
 - rate limiting
@@ -40,7 +38,6 @@ GLOBAL OPTIONS:
    --allow value, -a value    comma separated list of allowed paths
    --rpm value                limit for number of requests per minute from single IP (default: 1000)
    --nolimit value, -n value  list of ips allowed unlimited requests(separated by commas)
-   --verbose                  verbose logging enabled
    --help, -h                 show help
    --version, -v              print the version
 ```
