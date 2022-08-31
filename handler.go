@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -65,9 +65,9 @@ func parseRequests(r *http.Request) (string, []string, []ModifiedRequest, error)
 	var methods []string
 	ip := getIP(r)
 	if r.Body != nil {
-		body, err := ioutil.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
 		r.Body.Close()
-		r.Body = ioutil.NopCloser(bytes.NewBuffer(body)) // must be done, even when err
+		r.Body = io.NopCloser(bytes.NewBuffer(body)) // must be done, even when err
 		if err != nil {
 			return "", nil, nil, fmt.Errorf("failed to read body: %v", err)
 		}
@@ -169,12 +169,12 @@ func jsonRPCResponse(httpCode int, v interface{}) (*http.Response, error) {
 	body, err := json.Marshal(v)
 	if err != nil {
 		return &http.Response{
-			Body:       ioutil.NopCloser(strings.NewReader(http.StatusText(httpCode))),
+			Body:       io.NopCloser(strings.NewReader(http.StatusText(httpCode))),
 			StatusCode: httpCode,
 		}, fmt.Errorf("failed to serialize JSON: %v", err)
 	}
 	return &http.Response{
-		Body:       ioutil.NopCloser(bytes.NewReader(body)),
+		Body:       io.NopCloser(bytes.NewReader(body)),
 		StatusCode: httpCode,
 	}, nil
 }
