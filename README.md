@@ -26,7 +26,7 @@ USAGE:
    rpc-proxy [global options] command [command options] [arguments...]
 
 VERSION:
-   0.0.28
+   0.0.60
 
 COMMANDS:
      help, h  Shows a list of commands or help for one command
