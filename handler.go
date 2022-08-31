@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"strings"
 	"sync"
 	"time"
@@ -207,8 +208,26 @@ func (t *myTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	// gotils.L(ctx).Debug().Print("Forwarding request")
-	req.Host = req.RemoteAddr //workaround for CloudFlare
-	return http.DefaultTransport.RoundTrip(req)
+	//req.Host = req.RemoteAddr //workaround for CloudFlare
+
+	reqDump, err := httputil.DumpRequestOut(req, true)
+	if err != nil {
+		gotils.L(ctx).Error().Printf("Oh no! %v", err)
+	} else {
+		gotils.L(ctx).Debug().Printf("REQUEST:\n%s", string(reqDump))
+	}
+	remoteResp, err := http.DefaultTransport.RoundTrip(req)
+	if err != nil {
+		gotils.L(ctx).Error().Printf("Oh no! %v", err)
+	}
+
+	respDump, err := httputil.DumpResponse(remoteResp, true)
+	if err != nil {
+		gotils.L(ctx).Error().Printf("Oh no! %v", err)
+	}
+
+	gotils.L(ctx).Debug().Printf("RESPONSE:\n%s", string(respDump))
+	return remoteResp, err
 }
 
 // block returns a response only if the request should be blocked, otherwise it returns nil if allowed.
