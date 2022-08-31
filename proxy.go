@@ -132,25 +132,13 @@ func (p *Server) Example(w http.ResponseWriter, r *http.Request) {
 		w.Write(data)
 	}
 	switch method {
-	case "clique_getSigners":
-		do(hexNumOrLatest)
-	case "clique_getSignersAtHash":
-		do(hexHash)
-	case "clique_getSnapshot":
-		do(hexNumOrLatest)
-	case "clique_getSnapshotAtHash":
-		do(hexHash)
-	case "clique_getVoters":
-		do(hexNumOrLatest)
-	case "clique_getVotersAtHash":
-		do(hexHash)
+	case "eth_accounts":
+		do()
 	case "eth_blockNumber":
 		do(hexNumOrLatest)
 	case "eth_chainId":
 		do()
 	case "eth_gasPrice":
-		do()
-	case "eth_genesisAlloc":
 		do()
 	case "eth_getBalance":
 		do(hexAddr, hexNumOrLatest)
@@ -186,13 +174,9 @@ func (p *Server) Example(w http.ResponseWriter, r *http.Request) {
 		do(hexAddr, hexNumOrLatest)
 	case "eth_getTransactionByHash", "eth_getTransactionReceipt":
 		do(hexHash)
-	case "eth_totalSupply":
-		do(hexNumOrLatest)
 	case "net_listening":
 		do()
 	case "net_version":
-		do()
-	case "rpc_modules":
 		do()
 	case "web3_clientVersion":
 		do()
@@ -345,7 +329,7 @@ type homePageData struct {
 var homePageTmpl = template.Must(template.New("").Parse(`<!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>GoChain RPC Proxy</title>
+		<title>Ethereum RPC Proxy</title>
 		<style>
 			body {
 				font-family: 'Lato', sans-serif;
@@ -360,9 +344,9 @@ var homePageTmpl = template.Must(template.New("").Parse(`<!DOCTYPE html>
 		<link href="https://fonts.googleapis.com/css?family=Open+Sans:400,300,600,700&amp;subset=all" rel="stylesheet" type="text/css">
 	</head>
 	<body>
-		<h1>GoChain RPC Proxy</h1>
+		<h1>Ethereum RPC Proxy</h1>
 
-		<p>This is an RPC endpoint for <a href="https://gochain.io" rel="nofollow">GoChain</a>. It provides access to a limited subset of services. Rate limits apply.</p>
+		<p>This is an RPC endpoint for Ethereum. It provides access to a limited subset of services. Rate limits apply.</p>
 
 		<h2>Rate Limit</h2>
 
@@ -390,7 +374,7 @@ type exampleData struct {
 var exampleTmpl = template.Must(template.New("").Parse(`<!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>GoChain RPC Proxy</title>
+		<title>Ethereum RPC Proxy</title>
 		<style>
 			body {
 				font-family: 'Lato', sans-serif;
@@ -405,7 +389,7 @@ var exampleTmpl = template.Must(template.New("").Parse(`<!DOCTYPE html>
 		<link href="https://fonts.googleapis.com/css?family=Open+Sans:400,300,600,700&amp;subset=all" rel="stylesheet" type="text/css">
 	</head>
 	<body>
-		<h1>GoChain RPC Proxy</h1>
+		<h1>Ethereum RPC Proxy</h1>
 
 		<p>This is an example call for <code>{{.Method}}</code>.</p>
 
