@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gochain/gochain/v3/common"
@@ -36,6 +37,24 @@ func (cfg *ConfigData) NewServer() (*Server, error) {
 	wsurl, err := url.Parse(cfg.WSURL)
 	if err != nil {
 		return nil, err
+	}
+	httpReverseProxy := httputil.NewSingleHostReverseProxy(url)
+	originalDirector := httpReverseProxy.Director
+	httpReverseProxy.Director = func(req *http.Request) {
+		if originalDirector != nil {
+			originalDirector(req)
+		}
+		req.URL.Path = strings.TrimSuffix(req.URL.Path, "/")
+		req.Host = url.Host // rewrite the Host header
+		req.RequestURI = "" // the URL field should be used instead
+	}
+	originalModifyResponse := httpReverseProxy.ModifyResponse
+	httpReverseProxy.ModifyResponse = func(resp *http.Response) error {
+		if originalModifyResponse != nil {
+			return originalModifyResponse(resp)
+		}
+		resp.Header.Del("Access-Control-Allow-Origin") // avoid multiple values for this header in response to clients
+		return nil
 	}
 	s := &Server{target: url, proxy: httputil.NewSingleHostReverseProxy(url), wsProxy: NewProxy(wsurl)}
 	s.myTransport.blockRangeLimit = cfg.BlockRangeLimit
