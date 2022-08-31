@@ -45,7 +45,7 @@ func main() {
 
 	app := cli.NewApp()
 	app.Name = "rpc-proxy"
-	app.Usage = "A proxy for web3 JSONRPC"
+	app.Usage = "A reverse-proxy for web3 JSON RPC"
 	app.Version = Version
 
 	app.Flags = []cli.Flag{
