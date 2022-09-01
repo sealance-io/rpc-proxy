@@ -212,10 +212,10 @@ func (t *myTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	reqDump, err := httputil.DumpRequestOut(req, true)
 	if err != nil {
-		gotils.L(ctx).Error().Printf("Oh no! %v", err)
+		gotils.L(ctx).Error().Printf("Warning while logging the request! %v", err)
+	} else {
+		gotils.L(ctx).Debug().Printf("REQUEST:\n%s", string(reqDump))
 	}
-	gotils.L(ctx).Debug().Printf("REQUEST:\n%s", string(reqDump))
-
 	remoteResp, err := http.DefaultTransport.RoundTrip(req)
 	if err != nil {
 		gotils.L(ctx).Error().Printf("Oh no! %v", err)
@@ -223,10 +223,11 @@ func (t *myTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	respDump, err := httputil.DumpResponse(remoteResp, true)
 	if err != nil {
-		gotils.L(ctx).Error().Printf("Oh no! %v", err)
+		gotils.L(ctx).Error().Printf("Warning while logging the response! %v", err)
+	} else {
+		gotils.L(ctx).Debug().Printf("RESPONSE:\n%s", string(respDump))
 	}
 
-	gotils.L(ctx).Debug().Printf("RESPONSE:\n%s", string(respDump))
 	return remoteResp, err
 }
 
