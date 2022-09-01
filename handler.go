@@ -207,15 +207,15 @@ func (t *myTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, nil
 	}
 
-	// gotils.L(ctx).Debug().Print("Forwarding request")
+	gotils.L(ctx).Debug().Println("Forwarding request")
 	//req.Host = req.RemoteAddr //workaround for CloudFlare
 
 	reqDump, err := httputil.DumpRequestOut(req, true)
 	if err != nil {
 		gotils.L(ctx).Error().Printf("Oh no! %v", err)
-	} else {
-		gotils.L(ctx).Debug().Printf("REQUEST:\n%s", string(reqDump))
 	}
+	gotils.L(ctx).Debug().Printf("REQUEST:\n%s", string(reqDump))
+
 	remoteResp, err := http.DefaultTransport.RoundTrip(req)
 	if err != nil {
 		gotils.L(ctx).Error().Printf("Oh no! %v", err)
