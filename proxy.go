@@ -50,13 +50,14 @@ func (cfg *ConfigData) NewServer() (*Server, error) {
 	}
 	originalModifyResponse := httpReverseProxy.ModifyResponse
 	httpReverseProxy.ModifyResponse = func(resp *http.Response) error {
+		var e error = nil
 		if originalModifyResponse != nil {
-			return originalModifyResponse(resp)
+			e = originalModifyResponse(resp)
 		}
 		resp.Header.Del("Access-Control-Allow-Origin") // avoid multiple values for this header in response to clients
-		return nil
+		return e
 	}
-	s := &Server{target: url, proxy: httputil.NewSingleHostReverseProxy(url), wsProxy: NewProxy(wsurl)}
+	s := &Server{target: url, proxy: httpReverseProxy, wsProxy: NewProxy(wsurl)}
 	s.myTransport.blockRangeLimit = cfg.BlockRangeLimit
 	s.myTransport.url = cfg.URL
 	s.matcher, err = newMatcher(cfg.Allow)
