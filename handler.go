@@ -3,13 +3,17 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -180,6 +184,168 @@ func jsonRPCResponse(httpCode int, v interface{}) (*http.Response, error) {
 	}, nil
 }
 
+type AddHeaderTransport struct {
+	T http.RoundTripper
+}
+
+func (adt *AddHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Add("content-type", "application/JSON")
+	req.Header.Add("X-Access-Key", "<REDACTED>")
+	return adt.T.RoundTrip(req)
+}
+
+func NewAddHeaderTransport(T http.RoundTripper) *AddHeaderTransport {
+	if T == nil {
+		T = http.DefaultTransport
+	}
+	return &AddHeaderTransport{T}
+}
+
+type SimpleResult struct {
+	ID      int64  `json:"id"`
+	Jsonrpc string `json:"jsonrpc"`
+	Result  string `json:"result"`
+}
+
+const tenderlyAccount string = "<REDACTED>"
+const tenderlyProject string = "<REDACTED>"
+const tenderlyfork string = "<REDACTED>"
+
+var tenderlyApiGetForkUri string = fmt.Sprintf("https://api.tenderly.co/api/v1/account/%s/project/%s/fork/%s", tenderlyAccount, tenderlyProject, tenderlyfork)
+var tenderlyApiGetSimulationTemplateUri string = tenderlyApiGetForkUri + "/simulation/%s"
+var tenderlyRpcUri string = fmt.Sprintf("https://rpc.tenderly.co/fork/%s", tenderlyfork)
+
+func indexTenderly() {
+	log.SetFlags(0)
+	tenderly := http.Client{Transport: NewAddHeaderTransport(nil)}
+	respTenderly, err := tenderly.Get(tenderlyApiGetForkUri)
+	if err != nil {
+		log.Fatal(err)
+	}
+	data, err := io.ReadAll(respTenderly.Body)
+	respTenderly.Body.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+	tenderlyFork := new(TenderlyFork)
+	if err := json.Unmarshal(data, &tenderlyFork); err != nil {
+		log.Printf("The trick has failed! %v", err)
+	}
+	log.Printf("Tenderly ForkId=%s, first_block=%d, GlobalHead=%s\n", tenderlyFork.SimulationFork.ID, tenderlyFork.SimulationFork.BlockNumber, tenderlyFork.SimulationFork.GlobalHead)
+
+	tenderly = http.Client{Transport: NewAddHeaderTransport(nil)}
+	payload := strings.NewReader(`{
+		"jsonrpc": "2.0",
+		"method": "eth_blockNumber",
+		"params": [],
+		"id": 0
+	}`)
+	respTenderly, err = tenderly.Post(tenderlyRpcUri, "application/json", payload)
+	if err != nil {
+		log.Fatal(err)
+	}
+	data, err = io.ReadAll(respTenderly.Body)
+	respTenderly.Body.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+	result := new(SimpleResult)
+	if err := json.Unmarshal(data, &result); err != nil {
+		log.Fatal(err)
+	}
+	firstBlock := tenderlyFork.SimulationFork.BlockNumber
+	lastBlock, err := strconv.ParseInt(result.Result[2:], 16, 32)
+	if err != nil {
+		fmt.Println(err)
+	}
+	log.Printf("Tenderly first_block=%d, last_block=%d", firstBlock, lastBlock)
+
+	headBlockHex := ""
+	for currBlock := lastBlock; currBlock >= firstBlock; currBlock-- {
+		currBlockHex := "0x" + strconv.FormatInt(currBlock, 16)
+		payload := strings.NewReader(fmt.Sprintf(`{
+		"jsonrpc": "2.0",
+		"method": "eth_getBlockByNumber",
+		"params": ["%s", false],
+		"id": 0
+	}`, currBlockHex))
+		respTenderly, err = tenderly.Post(tenderlyRpcUri, "application/json", payload)
+		if err != nil {
+			log.Fatal(err)
+		}
+		data, err = io.ReadAll(respTenderly.Body)
+		respTenderly.Body.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+		block := new(Block)
+		if err := json.Unmarshal(data, &block); err != nil {
+			log.Fatal(err)
+		}
+		if headBlockHex != "" {
+			log.Default().Printf(`cache["%s"] = "%s"`, headBlockHex, block.Result.Hash)
+		}
+		headBlockHex = currBlockHex
+	}
+
+	// var currSimulationID = tenderlyFork.SimulationFork.GlobalHead
+	// var headBlockNumber string = ""
+
+	// for {
+	// 	getSimulationURI := fmt.Sprintf("tenderlyApiGetSimulationTemplateUri", currSimulationID)
+	// 	respTenderly, err = tenderly.Get(getSimulationURI)
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
+	// 	data, err = io.ReadAll(respTenderly.Body)
+	// 	respTenderly.Body.Close()
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
+	// 	tenderlySimulation := new(TenderlySimulation)
+	// 	if err := json.Unmarshal(data, &tenderlySimulation); err != nil {
+	// 		log.Printf("The trick has failed! %v", err)
+	// 	}
+	// 	//log.Printf("simulation %s is part of block %s\n", tenderlySimulation.Simulation.ID, tenderlySimulation.Simulation.BlockHeader.Number)
+	// 	payload := strings.NewReader(fmt.Sprintf(`{
+	// 	"jsonrpc": "2.0",
+	// 	"method": "eth_getBlockByNumber",
+	// 	"params": ["%s", false],
+	// 	"id": 0
+	// }`, tenderlySimulation.Simulation.BlockHeader.Number))
+	// 	respTenderly, err = tenderly.Post(tenderlyRpcUri, "application/json", payload)
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
+	// 	data, err = io.ReadAll(respTenderly.Body)
+	// 	respTenderly.Body.Close()
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
+	// 	block := new(Block)
+	// 	if err := json.Unmarshal(data, &block); err != nil {
+	// 		log.Fatal(err)
+	// 	}
+	// 	//log.Printf("simulation %s is part of block with hash %s\n", tenderlySimulation.Simulation.ID, block.Result.Hash)
+	// 	if headBlockNumber != "" {
+	// 		log.Default().Printf(`cache["%s"] = "%s"`, headBlockNumber, block.Result.Hash)
+	// 	}
+	// 	headBlockNumber = tenderlySimulation.Simulation.BlockHeader.Number
+	// 	if tenderlySimulation.Simulation.ParentID == "" || tenderlySimulation.Simulation.BlockHeader.Number == "0x" + strconv.FormatInt(tenderlyFork.SimulationFork.BlockNumber, 16) {
+	// 		break
+	// 	}
+	// 	currSimulationID = tenderlySimulation.Simulation.ParentID
+	//}
+}
+
+func randomHex(n int) (string, error) {
+	bytes := make([]byte, n)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return "0x" + hex.EncodeToString(bytes), nil
+}
+
 func (t *myTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	ctx := req.Context()
 	if reqID := middleware.GetReqID(req.Context()); reqID != "" {
@@ -216,19 +382,186 @@ func (t *myTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	} else {
 		gotils.L(ctx).Debug().Printf("REQUEST:\n%s", string(reqDump))
 	}
+
 	remoteResp, err := http.DefaultTransport.RoundTrip(req)
 	if err != nil {
 		gotils.L(ctx).Error().Printf("Oh no! %v", err)
+	} else if len(methods) > 1 && methods[0] == "eth_getBlockByNumber" && methods[1] == "eth_getBlockByNumber" {
+		data, err := io.ReadAll(remoteResp.Body)
+		remoteResp.Body.Close()
+		remoteResp.Body = io.NopCloser(bytes.NewBuffer(data)) // must be done, even when err
+		if err != nil {
+			gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+		}
+		blocks := make([]ExtendedBlock, 0)
+		if err := json.Unmarshal(data, &blocks); err != nil {
+			gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+		}
+		for i, block := range blocks {
+			blocks[i].Result.ParentHash = block.Result.Hash
+			if len(block.Result.Transactions) == 1 && block.Result.Transactions[0].Hash == "0xc5b2c658f5fa236c598a6e7fbf7f21413dc42e2a41dd982eb772b30707cba2eb" {
+				blocks[i].Result.ParentHash, err = randomHex(32)
+				if err != nil {
+					gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+				}
+				blocks[i].Result.Transactions = block.Result.Transactions[1:]
+			}
+			for i := range block.Result.Transactions {
+				block.Result.Transactions[i].TransactionIndex = "0x" + strconv.FormatInt(int64(i), 16)
+			}
+		}
+
+		data, err = json.Marshal(blocks)
+		if err != nil {
+			gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+		}
+		newContentSize := int64(len(data))
+		remoteResp.Body = io.NopCloser(bytes.NewBuffer(data))
+		remoteResp.ContentLength = newContentSize
+		remoteResp.Header.Set("Content-length", strconv.FormatInt(newContentSize, 10))
+	} else if len(methods) == 1 && methods[0] == "eth_getBlockByNumber" {
+		verbose, err := strconv.ParseBool(string(parsedRequests[0].Params[1]))
+		if err != nil {
+			gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+		}
+		data, err := io.ReadAll(remoteResp.Body)
+		remoteResp.Body.Close()
+		remoteResp.Body = io.NopCloser(bytes.NewBuffer(data)) // must be done, even when err
+		if err != nil {
+			gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+		}
+		if verbose {
+			block := new(ExtendedBlock)
+			if err := json.Unmarshal(data, &block); err != nil {
+				gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+			}
+			block.Result.ParentHash = block.Result.Hash
+			if len(block.Result.Transactions) == 1 && block.Result.Transactions[0].Hash == "0xc5b2c658f5fa236c598a6e7fbf7f21413dc42e2a41dd982eb772b30707cba2eb" {
+				block.Result.ParentHash, err = randomHex(32)
+				if err != nil {
+					gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+				}
+				block.Result.Transactions = block.Result.Transactions[1:]
+			}
+			for i := range block.Result.Transactions {
+				block.Result.Transactions[i].TransactionIndex = "0x" + strconv.FormatInt(int64(i), 16)
+			}
+			data, err = json.Marshal(block)
+			if err != nil {
+				gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+			}
+			newContentSize := int64(len(data))
+			remoteResp.Body = io.NopCloser(bytes.NewBuffer(data))
+			remoteResp.ContentLength = newContentSize
+			remoteResp.Header.Set("Content-length", strconv.FormatInt(newContentSize, 10))
+		} else {
+			block := new(Block)
+			if err := json.Unmarshal(data, &block); err != nil {
+				gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+			}
+			block.Result.ParentHash = block.Result.Hash
+			if len(block.Result.Transactions) == 1 && block.Result.Transactions[0] == "0xc5b2c658f5fa236c598a6e7fbf7f21413dc42e2a41dd982eb772b30707cba2eb" {
+				block.Result.ParentHash, err = randomHex(32)
+				if err != nil {
+					gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+				}
+				block.Result.Transactions = []string{} //make([]string, 0)
+			}
+			data, err = json.Marshal(block)
+			if err != nil {
+				gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+			}
+			newContentSize := int64(len(data))
+			remoteResp.Body = io.NopCloser(bytes.NewBuffer(data))
+			remoteResp.ContentLength = newContentSize
+			remoteResp.Header.Set("Content-length", strconv.FormatInt(newContentSize, 10))
+
+		}
+	} else if len(methods) > 1 && methods[0] == "eth_getTransactionReceipt" && methods[1] == "eth_getTransactionReceipt" {
+		data, err := io.ReadAll(remoteResp.Body)
+		remoteResp.Body.Close()
+		remoteResp.Body = io.NopCloser(bytes.NewBuffer(data)) // must be done, even when err
+		if err != nil {
+			gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+		}
+		receipts := make([]TransactionReceipt, 0)
+		if err := json.Unmarshal(data, &receipts); err != nil {
+			gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+		}
+		for i, receipt := range receipts {
+			for j := range receipt.Result.Logs {
+				receipts[i].Result.Logs[j].LogIndex = "0x" + strconv.FormatInt(int64(j), 16)
+			}
+		}
+
+		data, err = json.Marshal(receipts)
+		if err != nil {
+			gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+		}
+		newContentSize := int64(len(data))
+		remoteResp.Body = io.NopCloser(bytes.NewBuffer(data))
+		remoteResp.ContentLength = newContentSize
+		remoteResp.Header.Set("Content-length", strconv.FormatInt(newContentSize, 10))
+	} else if len(methods) == 1 && methods[0] == "eth_getTransactionReceipt" {
+		data, err := io.ReadAll(remoteResp.Body)
+		remoteResp.Body.Close()
+		remoteResp.Body = io.NopCloser(bytes.NewBuffer(data)) // must be done, even when err
+		if err != nil {
+			gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+		}
+		receipt := new(TransactionReceipt)
+		if err := json.Unmarshal(data, &receipt); err != nil {
+			gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+		}
+		for j := range receipt.Result.Logs {
+			receipt.Result.Logs[j].LogIndex = "0x" + strconv.FormatInt(int64(j), 16)
+		}
+		data, err = json.Marshal(receipt)
+		if err != nil {
+			gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+		}
+		newContentSize := int64(len(data))
+		remoteResp.Body = io.NopCloser(bytes.NewBuffer(data))
+		remoteResp.ContentLength = newContentSize
+		remoteResp.Header.Set("Content-length", strconv.FormatInt(newContentSize, 10))
+	} else if len(methods) == 1 && methods[0] == "eth_getLogs" {
+		data, err := io.ReadAll(remoteResp.Body)
+		remoteResp.Body.Close()
+		remoteResp.Body = io.NopCloser(bytes.NewBuffer(data)) // must be done, even when err
+		if err != nil {
+			gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+		}
+		logs := new(EthLogs)
+		if err := json.Unmarshal(data, &logs); err != nil {
+			gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+		}
+		for j := range logs.Result {
+			logs.Result[j].LogIndex = "0x" + strconv.FormatInt(int64(j), 16)
+		}
+		data, err = json.Marshal(logs)
+		if err != nil {
+			gotils.L(ctx).Error().Printf("The trick has failed! %v", err)
+		}
+		newContentSize := int64(len(data))
+		remoteResp.Body = io.NopCloser(bytes.NewBuffer(data))
+		remoteResp.ContentLength = newContentSize
+		remoteResp.Header.Set("Content-length", strconv.FormatInt(newContentSize, 10))
 	}
 
-	respDump, err := httputil.DumpResponse(remoteResp, true)
+	if remoteResp != nil {
+		dumpResponse(ctx, remoteResp, true)
+	}
+
+	return remoteResp, err
+}
+
+func dumpResponse(ctx context.Context, resp *http.Response, body bool) {
+	respDump, err := httputil.DumpResponse(resp, body)
 	if err != nil {
 		gotils.L(ctx).Error().Printf("Warning while logging the response! %v", err)
 	} else {
 		gotils.L(ctx).Debug().Printf("RESPONSE:\n%s", string(respDump))
 	}
-
-	return remoteResp, err
 }
 
 // block returns a response only if the request should be blocked, otherwise it returns nil if allowed.

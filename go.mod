@@ -25,6 +25,7 @@ require (
 require (
 	cloud.google.com/go/compute v1.9.0 // indirect
 	cloud.google.com/go/logging v1.5.0 // indirect
+	github.com/ChimeraCoder/gojson v1.1.0 // indirect
 	github.com/aead/siphash v1.0.1 // indirect
 	github.com/allegro/bigcache v1.2.1 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.1.3 // indirect
@@ -63,4 +64,5 @@ require (
 	google.golang.org/grpc v1.49.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
+	gopkg.in/yaml.v2 v2.3.0 // indirect
 )
